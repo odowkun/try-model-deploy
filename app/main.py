@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
 import numpy as np
@@ -33,7 +33,7 @@ X_rating = data['ratingsreceived'].values.reshape(-1, 1)
 X_cert = certifications_encoded.values
 X = np.hstack([skills_tfidf, X_exp, X_cert, X_rating])
 
-def predict_best_technician(user_skill):
+def     predict_best_technician(user_skill):
     # Preprocess the user input skill
     user_skill_tfidf = tfidf.transform([user_skill]).toarray()
     
@@ -69,12 +69,31 @@ app = FastAPI()
 class SkillInput(BaseModel):
     skill: str
 
+def clean_nan_values(data):
+    if isinstance(data, pd.Series):
+        return data.replace({np.nan: None}).to_dict()
+    if isinstance(data, dict):
+        return {k: (None if pd.isna(v) else v) for k, v in data.items()}
+    return data
+
 @app.post("/recommend")
 def recommend_technician(skill_input: SkillInput):
-    user_skill = skill_input.skill
-    recommended_technician = predict_best_technician(user_skill)
-    return recommended_technician.to_dict() if isinstance(recommended_technician, pd.Series) else {"message": recommended_technician}
+    try:
+        user_skill = skill_input.skill.strip()
+        if not user_skill:
+            raise ValueError("Skill cannot be empty.")
+        
+        recommended_technician = predict_best_technician(user_skill)
+        if isinstance(recommended_technician, pd.Series):
+            cleaned_data = clean_nan_values(recommended_technician)
+            return cleaned_data
+        else:
+            return {"message": recommended_technician}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.get("/recommendHello")
 def recommend_hello():
-    return {"message": "Hello World"}
+    return {"message": "Hello World!"}
